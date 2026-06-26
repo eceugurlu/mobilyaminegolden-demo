@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>ChaosAR · Hızlı Görselleştirme (DEBUG MODU)</title>
+
+  <!-- vConsole: MOBİL HATA YAKALAYICI (Bunu sadece sorunu çözene kadar kullanacağız) -->
+  <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
+  <script>
+    var vConsole = new window.VConsole();
+    console.log("🚀 vConsole Başlatıldı. Sistem dinleniyor...");
+  </script>
+
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.3.1/model-viewer.min.js"></script>
+
+  <style>
+    :root{
+      --base:#020202; --accent:#B2D5E5;
+      --accent-dim:rgba(178,213,229,0.12); --accent-glow:rgba(178,213,229,0.28);
+      --text-primary:#EDF6FA; --text-secondary:rgba(237,246,250,0.50);
+      --surface:rgba(6,16,24,0.92); --border:rgba(178,213,229,0.13);
+      --radius:24px;
+      --ease-out:cubic-bezier(0.23,1,0.32,1);
+      --ease-drawer:cubic-bezier(0.32,0.72,0,1);
+    }
+    *,*::before,*::after{ box-sizing:border-box; margin:0; padding:0; }
+    html{ background:var(--base); -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
+    body{
+      font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      background:radial-gradient(ellipse 130% 90% at 50% 45%,#1a1a1a 0%,var(--base) 62%);
+      color:var(--text-primary); min-height:100dvh; overflow-x:hidden;
+    }
+    body.modal-open{ overflow:hidden; overscroll-behavior:none; }
+
+    .viewer-page{ position:relative; width:100%; min-height:100dvh; display:flex; flex-direction:column; }
+
+    .top-bar{
+      position:absolute; inset:0 0 auto 0; z-index:10; padding:20px 20px 0;
+      display:flex; align-items:flex-start; justify-content:space-between;
+    }
+    .product-label{ display:flex; flex-direction:column; gap:3px; }
+    .product-label .category{ font-size:10px; color:rgba(255,255,255,0.6); }
+    .product-label .name{ font-size:20px; font-weight:700; }
+    .product-label .dimensions{ font-size:9.5px; color:rgba(255,255,255,0.38); }
+
+    .top-right-actions{ display:flex; flex-direction:column; align-items:flex-end; gap:12px; }
+    .info-btn{
+      width:36px; height:36px; border-radius:50%; background:rgba(178,213,229,0.15); border:0.5px solid var(--border); color:var(--accent);
+      display:flex; align-items:center; justify-content:center; cursor:pointer;
+    }
+    .info-btn svg{ width:18px; height:18px; }
+
+    .center-image-wrapper { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; padding: 100px 20px 160px; pointer-events: none; }
+    .product-png { width: 100%; max-width: 700px; object-fit: contain; }
+
+    .bottom-action{ position:fixed; inset:auto 0 0 0; z-index:20; padding:0 20px 40px; }
+    
+    .ar-trigger-btn{
+      width:100%; display:flex; align-items:center; justify-content:center; gap:12px;
+      padding:16px 28px; border-radius:999px; background:var(--accent); color:#081520; font-weight:800; cursor:pointer;
+    }
+    .btn-icon{ width:30px; height:30px; border-radius:50%; background:rgba(8,21,32,0.20); display:flex; align-items:center; justify-content:center; }
+    .btn-icon svg{ width:14px; height:14px; }
+
+    .modal-overlay{ position:fixed; inset:0; z-index:100; display:flex; align-items:flex-end; justify-content:center; background:rgba(2,2,2,0.55); opacity:0; visibility:hidden; pointer-events:none; transition:opacity 320ms; }
+    .modal-overlay.is-open{ opacity:1; visibility:visible; pointer-events:all; }
+    .modal-card{ width:100%; max-width:480px; background:var(--surface); border-radius:24px 24px 0 0; padding:28px 24px 44px; transform:translateY(52px); transition:transform 440ms; }
+    .modal-overlay.is-open .modal-card{ transform:translateY(0); }
+    
+    .modal-header{ text-align:center; margin-bottom:24px; }
+    .modal-header h2{ font-size:20px; font-weight:700; margin-bottom:5px; }
+
+    /* MODEL VIEWER ARTIK DAHA GENİŞ VE GÖRÜNÜR */
+    model-viewer {
+      position: relative; display: block; width: 100%; height: 80px;
+      background: transparent; outline: none;
+    }
+    model-viewer::part(default-ar-button){ display:none !important; }
+
+    /* Buton kaybolmasın diye CSS ile zorluyoruz */
+    #confirmARBtn{
+      position: absolute; left: 0; right: 0; bottom: 0; width: 100%;
+      display: flex !important; /* HATA VERSE BİLE KAYBOLMAYACAK */
+    }
+
+    .confirm-btn{ display:flex; align-items:center; justify-content:center; gap:10px; padding:16px 28px; border-radius:999px; border:none; background:var(--accent); color:#081520; font-weight:800; cursor:pointer; width:100%; }
+    .confirm-btn .btn-icon{ width:28px; height:28px; background:rgba(8,21,32,0.18); display:flex; align-items:center; justify-content:center; border-radius:50%; }
+    .confirm-btn .btn-icon svg{ width:13px; height:13px; }
+  </style>
+</head>
+<body>
+
+<div class="viewer-page">
+  <div class="top-bar">
+    <div class="product-label">
+      <span class="category">Hızlı Tasarım</span>
+      <span class="name" id="ui-title">Yükleniyor...</span>
+    </div>
+    <div class="top-right-actions">
+      <button id="infoBtn" class="info-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="center-image-wrapper">
+    <img id="ui-image" src="" class="product-png" />
+  </div>
+
+  <div class="bottom-action">
+    <button id="arTriggerBtn" class="ar-trigger-btn">
+      <span class="label">Evinde Görüntüle</span>
+      <span class="btn-icon">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M2 7.5A2 2 0 0 1 4 5.5h1.5l1-2h7l1 2H16a2 2 0 0 1 2 2V15a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7.5z"/><circle cx="10" cy="11" r="2.5"/></svg>
+      </span>
+    </button>
+  </div>
+</div>
+
+<div id="arModal" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2>Mekanınızda Görün</h2>
+      <p>Telefonunuzu zemine doğru tutun</p>
+    </div>
+
+    <!-- HATA İZLEME İÇİN EKRAN UYARISI -->
+    <p id="arStatus" style="display:none; color: #ff4a4a; font-size: 13px; text-align: center; margin-bottom: 10px; font-weight: bold;">
+      AR şu an hazır değil! Detaylar vConsole'da.
+    </p>
+
+    <model-viewer
+      id="mainViewer"
+      src=""
+      ar
+      ar-modes="scene-viewer quick-look webxr"
+      ar-scale="fixed"
+      loading="eager"
+      reveal="auto">
+
+      <!-- KAYBOLMASINI ENGELLEDİĞİMİZ BUTON -->
+      <button slot="ar-button" id="confirmARBtn" class="confirm-btn">
+        <span>Hazırım, kamerayı aç</span>
+        <span class="btn-icon">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8 L13 8"/><polyline points="9,4 13,8 9,12"/></svg>
+        </span>
+      </button>
+
+    </model-viewer>
+  </div>
+</div>
+
+<script>
+  console.log("--- SCRIPT BAŞLADI ---");
+
+  const productDatabase = {
+    "kosekoltuk": { title: "ZEN KÖŞE KOLTUK", image: "./kosekoltuk.png", glb: "./kosekoltuk.glb", usdz: "" },
+    "yatak": { title: "BEYKOZ YATAK", image: "./yatak.png", glb: "./yatak.glb", usdz: "" },
+    "koltuk": { title: "PREMİUM KOLTUK", image: "./koltuk.png", glb: "./koltuk.glb", usdz: "" }
+  }; 
+
+  const urlParams = new URLSearchParams(window.location.search);
+  let requestedProduct = urlParams.get('urun') || "kosekoltuk";
+  const data = productDatabase[requestedProduct];
+
+  document.getElementById('ui-title').textContent = data.title;
+  document.getElementById('ui-image').src = data.image;
+
+  const viewer = document.getElementById('mainViewer');
+  viewer.src = data.glb;
+  console.log("GLB dosyası yüklendi:", data.glb);
+  
+  if(data.usdz && data.usdz.trim() !== "") {
+      viewer.setAttribute('ios-src', data.usdz);
+      console.log("USDZ dosyası tanımlandı:", data.usdz);
+  } else {
+      viewer.removeAttribute('ios-src');
+      console.log("USDZ dosyası yok. Apple için otomatik çeviri beklenecek.");
+  }
+
+  // HATA DİNLEYİCİLERİ
+  viewer.addEventListener('error', (event) => {
+      console.error("❌ MODEL VIEWER HATASI:", event.detail);
+      document.getElementById('arStatus').style.display = 'block';
+      document.getElementById('arStatus').innerText = "3D Model Yükleme Hatası!";
+  });
+
+  viewer.addEventListener('ar-status', (event) => {
+      console.log("ℹ️ AR Motoru Durumu Değişti:", event.detail.status);
+  });
+
+  const modal = document.getElementById('arModal');
+  const openBtn = document.getElementById('arTriggerBtn');
+  const confirmBtn = document.getElementById('confirmARBtn');
+  const arStatus = document.getElementById('arStatus');
+
+  openBtn.addEventListener('click', () => {
+    console.log("Evinde Görüntüle butonuna basıldı. Modal Açılıyor.");
+    modal.classList.add('is-open');
+    document.body.classList.add('modal-open');
+    
+    console.log("Şu anki canActivateAR durumu:", viewer.canActivateAR);
+  });
+
+  modal.addEventListener('click', (e) => { 
+    if (e.target === modal) {
+        modal.classList.remove('is-open');
+        document.body.classList.remove('modal-open');
+    }
+  });
+
+  confirmBtn.addEventListener('click', (e) => {
+    console.log("🔥 Hazırım butonuna tıklandı!");
+    console.log("Tıklama anındaki canActivateAR durumu:", viewer.canActivateAR);
+    
+    if (viewer.canActivateAR) {
+      console.log("✅ AR desteği var, kamera açılma komutu kütüphaneye gitti.");
+      arStatus.style.display = 'none';
+      setTimeout(() => {
+        modal.classList.remove('is-open');
+        document.body.classList.remove('modal-open');
+      }, 800);
+    } else {
+      console.error("❌ HATA: Tarayıcı AR başlatmayı reddetti! (canActivateAR = false)");
+      arStatus.style.display = 'block';
+    }
+  });
+</script>
+
+</body>
+</html>
